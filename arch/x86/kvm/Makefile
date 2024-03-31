@@ -12,7 +12,12 @@ include $(srctree)/virt/kvm/Makefile.kvm
 kvm-y			+= x86.o emulate.o i8259.o irq.o lapic.o \
 			   i8254.o ioapic.o irq_comm.o cpuid.o pmu.o mtrr.o \
 			   hyperv.o debugfs.o mmu/mmu.o mmu/page_track.o \
-			   mmu/spte.o
+			   mmu/spte.o \
+			   heckler/raw_spinlock.o  heckler/sev-step.o heckler/userspace_page_track_api.o
+
+$(obj)/heckler/raw_spinlock.o:
+	nasm -f elf64 -o $(obj)/heckler/raw_spinlock.o $(src)/heckler/raw_spinlock.asm
+	touch $(src)/heckler/.raw_spinlock.o.cmd
 
 ifdef CONFIG_HYPERV
 kvm-y			+= kvm_onhyperv.o
