@@ -95,4 +95,6 @@ bool kvm_mmu_slot_gfn_protect(struct kvm *kvm,
 				    int min_level,
 					enum kvm_page_track_mode mode);
 
+long kvm_start_tracking(struct kvm_vcpu *vcpu, enum kvm_page_track_mode mode );
+long kvm_stop_tracking(struct kvm_vcpu *vcpu,enum kvm_page_track_mode mode );
 #endif
