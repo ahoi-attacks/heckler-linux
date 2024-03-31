@@ -6607,3 +6607,118 @@ void kvm_mmu_pre_destroy_vm(struct kvm *kvm)
 	if (kvm->arch.nx_lpage_recovery_thread)
 		kthread_stop(kvm->arch.nx_lpage_recovery_thread);
 }
+
+// heckler ---
+
+// borrowed from sev-step
+static bool spte_protect(u64 *sptep, bool pt_protect,
+	enum kvm_page_track_mode mode)
+{
+	u64 spte = *sptep;
+	bool shouldFlush = false;
+
+
+	if (!is_writable_pte(spte) &&
+	    !(pt_protect && is_mmu_writable_spte(spte)))
+		return false;
+
+	rmap_printk("spte %p %llx\n", sptep, *sptep);
+
+	if (pt_protect)
+		spte &= ~EPT_SPTE_MMU_WRITABLE;
+
+	if(mode == KVM_PAGE_TRACK_WRITE) {
+		spte = spte & ~PT_WRITABLE_MASK;
+		shouldFlush = true;
+#if 0
+	} else if( mode == KVM_PAGE_TRACK_RESET_ACCESSED) {
+		spte = spte & ~PT_ACCESSED_MASK;
+		shouldFlush = true;
+	} else if(mode == KVM_PAGE_TRACK_ACCESS) {
+		spte = spte & ~PT_PRESENT_MASK;
+		spte = spte & ~PT_WRITABLE_MASK;
+		spte = spte & ~PT_USER_MASK;
+		spte = spte | (0x1ULL << PT64_NX_SHIFT);
+		shouldFlush = true;
+#endif		
+	} else if( mode == KVM_PAGE_TRACK_EXEC) {
+		spte = spte | (0x1ULL << PT64_NX_SHIFT); 
+		shouldFlush = true;
+	} else if (mode == KVM_PAGE_TRACK_RESET_EXEC) {
+		spte = spte & (~(0x1ULL << PT64_NX_SHIFT));
+		shouldFlush = true;
+	}else {
+		printk(KERN_WARNING "spte_protect was called with invalid mode"
+		"parameter %d\n",mode);
+	}
+
+	shouldFlush |= mmu_spte_update(sptep, spte);
+	return shouldFlush;
+}
+
+
+static bool __rmap_protect(struct kvm *kvm,
+				 struct kvm_rmap_head *rmap_head,
+				 bool pt_protect, enum kvm_page_track_mode mode)
+{
+	u64 *sptep;
+	struct rmap_iterator iter;
+	bool flush = false;
+
+	for_each_rmap_spte(rmap_head, &iter, sptep)
+		flush |= spte_protect(sptep, pt_protect, mode);
+
+	return flush;
+}
+
+
+bool kvm_mmu_slot_gfn_protect(struct kvm *kvm,
+				    struct kvm_memory_slot *slot, u64 gfn,
+				    int min_level,
+					enum kvm_page_track_mode mode)
+{
+	struct kvm_rmap_head *rmap_head;
+	int i;
+	bool protected = false;
+
+	if (kvm_memslots_have_rmaps(kvm)) { 
+		for (i = min_level; i <= KVM_MAX_HUGEPAGE_LEVEL; ++i) {
+			rmap_head = gfn_to_rmap(gfn, i, slot);
+			protected |= __rmap_protect(kvm, rmap_head, true, mode);
+		}
+	}
+
+	WARN(is_tdp_mmu_enabled(kvm), "exec protect not supported with TDP MMU");	
+	return protected;
+}
+
+
+bool kvm_vcpu_exec_protect_gfn(struct kvm_vcpu *vcpu, u64 gfn, bool flush)
+{
+	struct kvm_memory_slot *slot;
+	bool protected;
+
+
+	slot = kvm_vcpu_gfn_to_memslot(vcpu, gfn);
+	protected = kvm_mmu_slot_gfn_protect(vcpu->kvm, slot, gfn, PG_LEVEL_4K, KVM_PAGE_TRACK_EXEC);
+	if (flush && protected) {
+		kvm_flush_remote_tlbs(vcpu->kvm);
+	}
+	return protected;
+}
+
+bool kvm_vcpu_exec_unprotect_gfn(struct kvm_vcpu *vcpu, u64 gfn, bool flush)
+{
+	struct kvm_memory_slot *slot;
+	bool protected;
+
+
+	slot = kvm_vcpu_gfn_to_memslot(vcpu, gfn);
+	protected = kvm_mmu_slot_gfn_protect(vcpu->kvm, slot, gfn, PG_LEVEL_4K, KVM_PAGE_TRACK_RESET_EXEC);
+	if (flush && protected) {
+		kvm_flush_remote_tlbs(vcpu->kvm);
+	}
+	return protected;
+}
+
+
