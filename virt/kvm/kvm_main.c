@@ -67,6 +67,9 @@
 
 #include <linux/kvm_dirty_ring.h>
 
+#include <linux/heckler/heckler.h>
+#include <linux/heckler/sev-step.h>
+
 /* Worst case buffer size needed for holding an integer. */
 #define ITOA_MAX_LEN 12
 
@@ -1194,6 +1197,8 @@ static void kvm_destroy_vm(struct kvm *kvm)
 {
 	int i;
 	struct mm_struct *mm = kvm->mm;
+
+	heckler_on_kvm_destroy_vm(kvm);
 
 	kvm_destroy_pm_notifier(kvm);
 	kvm_uevent_notify_change(KVM_EVENT_DESTROY_VM, kvm);
@@ -3768,6 +3773,8 @@ static int kvm_vm_ioctl_create_vcpu(struct kvm *kvm, u32 id)
 	r = kvm_arch_vcpu_create(vcpu);
 	if (r)
 		goto vcpu_free_run_page;
+	
+	heckler_on_vcpu_create(kvm, vcpu);
 
 	if (kvm->dirty_ring_size) {
 		r = kvm_dirty_ring_alloc(&vcpu->dirty_ring,
@@ -3909,6 +3916,9 @@ static long kvm_vcpu_ioctl(struct file *filp,
 		r = -EINVAL;
 		if (arg)
 			goto out;
+
+		heckler_on_vcpu_run(vcpu);
+		
 		oldpid = rcu_access_pointer(vcpu->pid);
 		if (unlikely(oldpid != task_pid(current))) {
 			/* The thread running this VCPU changed. */
@@ -4798,6 +4808,7 @@ static int kvm_dev_ioctl_create_vm(unsigned long type)
 	kvm_uevent_notify_change(KVM_EVENT_CREATE_VM, kvm);
 
 	fd_install(r, file);
+	heckler_on_create_vm(kvm);
 	return r;
 
 put_kvm:
@@ -4839,6 +4850,9 @@ static long kvm_dev_ioctl(struct file *filp,
 		r = -EOPNOTSUPP;
 		break;
 	default:
+		if (heckler_can_handle_kvm_dev_ioctl(filp, ioctl, arg))
+			return heckler_on_kvm_dev_ioctl(filp, ioctl, arg);
+	  	else 
 		return kvm_arch_dev_ioctl(filp, ioctl, arg);
 	}
 out:
@@ -5683,6 +5697,8 @@ int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
 	struct kvm_cpu_compat_check c;
 	int r;
 	int cpu;
+
+	heckler_on_kvm_init();
 
 	r = kvm_arch_init(opaque);
 	if (r)

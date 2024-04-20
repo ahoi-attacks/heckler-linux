@@ -24,6 +24,8 @@
 #define KVM_USP_CLOSE_POLL_API _IO(KVMIO, 0x10)
 #define KVM_SEV_STEP_ENABLE _IOWR(KVMIO, 0x11, sev_step_param_t)
 #define KVM_SEV_STEP_DISABLE _IO(KVMIO, 0x12)
+#define KVM_INJECT_INTERRUPT _IOWR(KVMIO, 0x1a, inject_interrupt_t)
+
 /**
  * @brief Injects an nmi into vm upon next vmrun.
  * Should only be called while vm is halted
@@ -182,6 +184,12 @@ typedef struct {
 typedef struct {
 	int enabled;
 } track_boot_param_t;
+
+
+typedef struct {
+  int vector;
+} inject_interrupt_t;
+
 
 /**
  * @brief struct for storing tracking parameters 

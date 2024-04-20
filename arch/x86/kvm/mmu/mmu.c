@@ -53,6 +53,7 @@
 #include <asm/vmx.h>
 #include <asm/kvm_page_track.h>
 #include "trace.h"
+#include <linux/heckler/heckler.h>
 
 #include "paging.h"
 
@@ -758,11 +759,13 @@ static void update_gfn_disallow_lpage_count(const struct kvm_memory_slot *slot,
 {
 	struct kvm_lpage_info *linfo;
 	int i;
-
 	for (i = PG_LEVEL_2M; i <= KVM_MAX_HUGEPAGE_LEVEL; ++i) {
 		linfo = lpage_info_slot(gfn, slot, i);
 		linfo->disallow_lpage += count;
 		WARN_ON(linfo->disallow_lpage < 0);
+		if (linfo->disallow_lpage < 0) {
+			pr_info("%llx, linfo->disallow_lpage: %d, count: %d\n", gfn, linfo->disallow_lpage, count);
+		}
 	}
 }
 
@@ -3901,11 +3904,15 @@ static int handle_mmio_page_fault(struct kvm_vcpu *vcpu, u64 addr, bool direct)
 static bool page_fault_handle_page_track(struct kvm_vcpu *vcpu,
 					 struct kvm_page_fault *fault)
 {
+	
+	heckler_on_page_fault(vcpu, fault);
+	#if 0
 	if (unlikely(fault->rsvd))
 		return false;
 
 	if (!fault->present || !fault->write)
 		return false;
+	#endif
 
 	/*
 	 * guest is writing the page which is write tracked which can
@@ -6625,7 +6632,7 @@ static bool spte_protect(u64 *sptep, bool pt_protect,
 	rmap_printk("spte %p %llx\n", sptep, *sptep);
 
 	if (pt_protect)
-		spte &= ~EPT_SPTE_MMU_WRITABLE;
+        spte &= ~EPT_SPTE_MMU_WRITABLE;
 
 	if(mode == KVM_PAGE_TRACK_WRITE) {
 		spte = spte & ~PT_WRITABLE_MASK;
@@ -6728,6 +6735,8 @@ long kvm_start_tracking(struct kvm_vcpu *vcpu, enum kvm_page_track_mode mode ) {
 	struct kvm_memory_slot *slot;
 	int srcu_lock_retval,bkt,i;
 
+	pr_info("kvm_start_tracking: \n");
+
 	for( i = 0; i < KVM_ADDRESS_SPACE_NUM; i++) {
 		slots = __kvm_memslots(vcpu->kvm,i);
 		kvm_for_each_memslot(slot, bkt, slots) {
@@ -6754,6 +6763,7 @@ long kvm_start_tracking(struct kvm_vcpu *vcpu, enum kvm_page_track_mode mode ) {
 	if( count > 0 ) {
 		kvm_flush_remote_tlbs(vcpu->kvm);
 	}
+	pr_info("kvm_start_tracking: %ld pages\n", count);
     return count;
 }
 EXPORT_SYMBOL(kvm_start_tracking);
@@ -6766,6 +6776,8 @@ long kvm_stop_tracking(struct kvm_vcpu *vcpu,enum kvm_page_track_mode mode ) {
 		struct kvm_memory_slot *slot;
 		int srcu_lock_retval,bkt,i;
 
+		pr_info("kvm_stop_tracking: \n");
+
 		for( i = 0; i < KVM_ADDRESS_SPACE_NUM; i++) {
 			slots = __kvm_memslots(vcpu->kvm,i);
 			kvm_for_each_memslot(slot, bkt, slots) {
@@ -6776,12 +6788,18 @@ long kvm_stop_tracking(struct kvm_vcpu *vcpu,enum kvm_page_track_mode mode ) {
 				{
 					slot = kvm_vcpu_gfn_to_memslot(vcpu, iterator);
 					if( slot != NULL && kvm_slot_page_track_is_active(vcpu->kvm, 
-																	  slot, iterator,  mode)) {
+																	  slot,
+                                                                      iterator,
+                                                                      mode)) {
 						kvm_slot_page_track_remove_page(vcpu->kvm, 
 										slot, 
 										iterator, 
 										mode);
-						
+						kvm_mmu_slot_gfn_protect(vcpu->kvm,
+                                                 slot,
+                                                 iterator,
+                                                 PG_LEVEL_4K,
+                                                 KVM_PAGE_TRACK_RESET_EXEC);
 						count++;
 					}
 					if( need_resched() || rwlock_needbreak(&vcpu->kvm->mmu_lock))  {
@@ -6792,6 +6810,11 @@ long kvm_stop_tracking(struct kvm_vcpu *vcpu,enum kvm_page_track_mode mode ) {
 				srcu_read_unlock(&vcpu->kvm->srcu, srcu_lock_retval);
 			}
 		}
+	
+	if( count > 0 ) {
+		kvm_flush_remote_tlbs(vcpu->kvm);
+	}
+	pr_info("kvm_stop_tracking: %ld pages\n", count);
     return count;
 }
 EXPORT_SYMBOL(kvm_stop_tracking);

@@ -47,6 +47,7 @@
 
 #include "kvm_onhyperv.h"
 #include "svm_onhyperv.h"
+#include <linux/heckler/heckler.h>
 
 MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
@@ -3873,6 +3874,7 @@ static __no_kcsan fastpath_t svm_vcpu_run(struct kvm_vcpu *vcpu)
 	if (!static_cpu_has(X86_FEATURE_V_SPEC_CTRL))
 		x86_spec_ctrl_set_guest(svm->spec_ctrl, svm->virt_spec_ctrl);
 
+	heckler_on_svm_vcpu_enter_exit(vcpu);
 	svm_vcpu_enter_exit(vcpu);
 
 	/*
