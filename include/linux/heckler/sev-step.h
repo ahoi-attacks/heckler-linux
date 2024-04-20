@@ -8,8 +8,6 @@
 #include <asm/kvm_page_track.h>
 #include <asm/svm.h>
 
-// #include "idt-gate-desc.h"
-// #include "libcache.h"
 #include <uapi/linux/heckler/sev-step.h>
 
 #define CTL_MSR_0  0xc0010200ULL
@@ -197,7 +195,7 @@ extern struct mutex sev_step_config_mutex;
 
 /**
  * @brief Remove a single page from page track pool
- * 
+ *
  * @param vcpu vcpu of kvm
  * @param gfn guest page number
  * @param mode tracking mode
@@ -208,7 +206,7 @@ bool __untrack_single_page(struct kvm_vcpu *vcpu, gfn_t gfn,
 
 /**
  * @brief Add a single page to page track pool
- * 
+ *
  * @param vcpu vcpu of kvm
  * @param gfn guest page number
  * @param mode page tracking mode

@@ -172,7 +172,7 @@ void kvm_slot_page_track_remove_page(struct kvm *kvm,
 	 * allow large page mapping for the tracked page
 	 * after the tracker is gone.
 	 */
-	kvm_mmu_gfn_allow_lpage(slot, gfn);
+	// kvm_mmu_gfn_allow_lpage(slot, gfn);
 }
 EXPORT_SYMBOL_GPL(kvm_slot_page_track_remove_page);
 
