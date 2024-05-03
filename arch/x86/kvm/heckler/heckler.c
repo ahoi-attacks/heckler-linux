@@ -461,6 +461,7 @@ static int __ioctl_untrack_all_pages(struct file *f, void *a) {
     return 0;
 }
 
+__attribute__((unused))
 static const char* __ioctl_to_char(unsigned int ioctl) {
     switch (ioctl) {
         case KVM_INJECT_INTERRUPT: return "KVM_INJECT_INTERRUPT";
